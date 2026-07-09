@@ -2,6 +2,9 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
+os.environ.setdefault("EMAIL_FROM", "Outside Edge <newsletter@example.com>")
+os.environ.setdefault("PUBLIC_SITE_URL", "https://outside-edge.test")
+os.environ.setdefault("EMAIL_DRY_RUN", "true")
 
 import pytest
 from fastapi.testclient import TestClient

@@ -84,6 +84,67 @@ the same mock records without duplicating matches or identical snapshots.
 `SCORE_STALE_AFTER_MINUTES` controls the live-score freshness threshold and
 defaults to five minutes.
 
+## Daily Yorker email delivery
+
+Configure the canonical sender and public site URL:
+
+```env
+EMAIL_FROM=Outside Edge <newsletter@example.com>
+PUBLIC_SITE_URL=https://outside-edge.example
+EMAIL_REPLY_TO=editor@example.com
+EMAIL_DRY_RUN=true
+RESEND_API_KEY=
+```
+
+`EMAIL_FROM` and `PUBLIC_SITE_URL` are required. `EMAIL_REPLY_TO` is optional.
+Keep `EMAIL_DRY_RUN=true` for local development. `RESEND_API_KEY` is only
+required when real delivery is enabled.
+
+Preview the latest published issue without creating deliveries or contacting
+Resend:
+
+```bash
+curl -X POST http://127.0.0.1:8000/admin/email/preview-latest \
+  -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
+```
+
+Run the full recipient selection and duplicate checks in dry-run mode:
+
+```bash
+curl -X POST \
+  "http://127.0.0.1:8000/admin/email/send-latest?dry_run=true" \
+  -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
+```
+
+To send a specific published issue, use:
+
+```bash
+curl -X POST \
+  "http://127.0.0.1:8000/admin/email/send-issue/YYYY-MM-DD?dry_run=true" \
+  -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
+```
+
+Real delivery requires all three safeguards:
+
+1. Set `EMAIL_DRY_RUN=false`.
+2. Configure a valid `RESEND_API_KEY`.
+3. Call a send route with `dry_run=false`.
+
+```bash
+curl -X POST \
+  "http://127.0.0.1:8000/admin/email/send-latest?dry_run=false" \
+  -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
+```
+
+Successful issue/subscriber deliveries are not repeated unless `force=true` is
+explicitly supplied. Provider failures are recorded per recipient and do not
+stop the remainder of the batch.
+
+Every email contains a no-login unsubscribe link. Opening it with `GET` shows a
+confirmation page without changing subscription state. Confirming performs an
+idempotent `POST` and marks the subscriber inactive. Submitting the public
+signup form again explicitly reactivates that subscriber.
+
 ## Database migrations
 
 Alembic is the only production schema authority. New databases should run:

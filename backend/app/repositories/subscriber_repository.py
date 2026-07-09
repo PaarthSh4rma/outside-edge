@@ -43,3 +43,10 @@ class SubscriberRepository:
             .order_by(SubscriberModel.created_at.desc())
             .all()
         )
+
+    def get_all_subscribers(self) -> list[SubscriberModel]:
+        return (
+            self.db.query(SubscriberModel)
+            .order_by(SubscriberModel.created_at.desc())
+            .all()
+        )

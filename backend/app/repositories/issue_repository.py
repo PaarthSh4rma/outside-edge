@@ -27,18 +27,21 @@ class IssueRepository:
         )
 
         if existing_issue:
-            self.db.delete(existing_issue)
+            existing_issue.title = title
+            existing_issue.tagline = tagline
+            existing_issue.status = status
+            existing_issue.articles.clear()
+            issue = existing_issue
             self.db.flush()
-
-        issue = IssueModel(
-            issue_date=issue_date,
-            title=title,
-            tagline=tagline,
-            status=status,
-        )
-
-        self.db.add(issue)
-        self.db.flush()
+        else:
+            issue = IssueModel(
+                issue_date=issue_date,
+                title=title,
+                tagline=tagline,
+                status=status,
+            )
+            self.db.add(issue)
+            self.db.flush()
 
         for section_name, section_description, articles in sections:
             for rank, article in enumerate(articles, start=1):
