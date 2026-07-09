@@ -7,6 +7,7 @@ from app.config import settings
 from app.db import Base
 from app.models.article import ArticleModel
 from app.models.issue import IssueArticleModel, IssueModel
+from app.models.score import CompetitionModel, MatchModel, ScoreSnapshotModel, TeamModel
 from app.models.subscriber import SubscriberModel
 
 

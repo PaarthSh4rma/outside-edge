@@ -5,6 +5,7 @@ import { AppShell } from "./components/AppShell";
 import { ArchivePage } from "./pages/ArchivePage";
 import { HomePage } from "./pages/HomePage";
 import { IssuePage } from "./pages/IssuePage";
+import { MatchesPage } from "./pages/MatchesPage";
 import type { ThemeMode } from "./types/theme";
 
 export default function App() {
@@ -37,6 +38,7 @@ export default function App() {
             path="/daily-yorker/:issueDate"
             element={<IssuePage themeMode={themeMode} />}
           />
+          <Route path="/matches" element={<MatchesPage themeMode={themeMode} />} />
         </Routes>
       </AppShell>
     </BrowserRouter>

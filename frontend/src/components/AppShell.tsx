@@ -46,6 +46,7 @@ export function AppShell({
           <div className="flex items-center gap-2">
             <nav className="hidden items-center sm:flex">
               <NavItem to="/" label="Home" />
+              <NavItem to="/matches" label="Matches" />
               <NavItem to="/daily-yorker" label="Daily Yorker" />
             </nav>
             <button

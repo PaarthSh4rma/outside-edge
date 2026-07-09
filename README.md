@@ -62,6 +62,28 @@ Open the product views at:
 Use today's date in ISO format for the issue generated above. The Docker
 frontend exposes the same paths at `http://127.0.0.1:8080`.
 
+## Mock match scores
+
+Milestone 2 uses a small provider-neutral mock feed. Seed or refresh it through
+the protected admin endpoint:
+
+```bash
+curl -X POST http://127.0.0.1:8000/admin/sync-scores \
+  -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
+```
+
+Read the live match API:
+
+```bash
+curl http://127.0.0.1:8000/matches/live
+```
+
+The full match centre is available at `http://127.0.0.1:5173/matches`, or at
+`http://127.0.0.1:8080/matches` when using Docker. Repeating the sync updates
+the same mock records without duplicating matches or identical snapshots.
+`SCORE_STALE_AFTER_MINUTES` controls the live-score freshness threshold and
+defaults to five minutes.
+
 ## Database migrations
 
 Alembic is the only production schema authority. New databases should run:

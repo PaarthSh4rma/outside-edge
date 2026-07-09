@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -5,6 +6,7 @@ class Settings(BaseSettings):
     database_url: str
     admin_api_key: str
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
+    score_stale_after_minutes: int = Field(default=5, gt=0)
 
     model_config = SettingsConfigDict(
         env_file=".env",
