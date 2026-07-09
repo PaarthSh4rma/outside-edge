@@ -28,7 +28,7 @@ class IssueRepository:
 
         if existing_issue:
             self.db.delete(existing_issue)
-            self.db.commit()
+            self.db.flush()
 
         issue = IssueModel(
             issue_date=issue_date,
@@ -38,8 +38,7 @@ class IssueRepository:
         )
 
         self.db.add(issue)
-        self.db.commit()
-        self.db.refresh(issue)
+        self.db.flush()
 
         for section_name, section_description, articles in sections:
             for rank, article in enumerate(articles, start=1):
@@ -62,6 +61,27 @@ class IssueRepository:
             self.db.query(IssueModel)
             .options(joinedload(IssueModel.articles))
             .order_by(IssueModel.issue_date.desc())
+            .first()
+        )
+
+    def get_published_issues(self, limit: int = 30) -> list[IssueModel]:
+        return (
+            self.db.query(IssueModel)
+            .options(joinedload(IssueModel.articles))
+            .filter(IssueModel.status == "published")
+            .order_by(IssueModel.issue_date.desc())
+            .limit(limit)
+            .all()
+        )
+
+    def get_published_issue_by_date(self, issue_date: date) -> IssueModel | None:
+        return (
+            self.db.query(IssueModel)
+            .options(joinedload(IssueModel.articles))
+            .filter(
+                IssueModel.issue_date == issue_date,
+                IssueModel.status == "published",
+            )
             .first()
         )
 

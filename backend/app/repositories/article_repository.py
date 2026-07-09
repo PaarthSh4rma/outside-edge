@@ -1,7 +1,11 @@
+from sqlalchemy import insert
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.models.article import ArticleModel
 from app.schemas.article import Article
+from app.services.url_normalizer import normalize_article_url
 
 
 class ArticleRepository:
@@ -9,37 +13,57 @@ class ArticleRepository:
         self.db = db
 
     def create_if_not_exists(self, article: Article) -> ArticleModel:
-        existing_article = (
-            self.db.query(ArticleModel)
-            .filter(ArticleModel.url == str(article.url))
-            .first()
-        )
-
-        if existing_article:
-            return existing_article
-
-        article_model = ArticleModel(
-            title=article.title,
-            url=str(article.url),
-            source=article.source,
-            published_at=article.published_at,
-            summary=article.summary,
-            category=article.category,
-        )
-
-        self.db.add(article_model)
-        self.db.commit()
-        self.db.refresh(article_model)
-
-        return article_model
+        return self.create_many_if_not_exists([article])[0]
 
     def create_many_if_not_exists(self, articles: list[Article]) -> list[ArticleModel]:
-        saved_articles: list[ArticleModel] = []
+        if not articles:
+            return []
+
+        values_by_url: dict[str, dict] = {}
+        ordered_urls: list[str] = []
 
         for article in articles:
-            saved_articles.append(self.create_if_not_exists(article))
+            normalized_url = normalize_article_url(str(article.url))
+            if normalized_url in values_by_url:
+                continue
 
-        return saved_articles
+            ordered_urls.append(normalized_url)
+            values_by_url[normalized_url] = {
+                "title": article.title,
+                "url": str(article.url),
+                "normalized_url": normalized_url,
+                "source": article.source,
+                "published_at": article.published_at,
+                "summary": article.summary,
+                "category": article.category,
+            }
+
+        statement = self._insert_statement(list(values_by_url.values()))
+        self.db.execute(statement)
+        self.db.commit()
+
+        saved_by_url = {
+            article.normalized_url: article
+            for article in self.db.query(ArticleModel)
+            .filter(ArticleModel.normalized_url.in_(ordered_urls))
+            .all()
+        }
+
+        return [saved_by_url[url] for url in ordered_urls]
+
+    def _insert_statement(self, values: list[dict]):
+        dialect_name = self.db.get_bind().dialect.name
+
+        if dialect_name == "postgresql":
+            return postgres_insert(ArticleModel).values(values).on_conflict_do_nothing(
+                index_elements=[ArticleModel.normalized_url]
+            )
+        if dialect_name == "sqlite":
+            return sqlite_insert(ArticleModel).values(values).on_conflict_do_nothing(
+                index_elements=[ArticleModel.normalized_url]
+            )
+
+        return insert(ArticleModel).values(values)
 
     def get_latest(self, limit: int = 50) -> list[ArticleModel]:
         return (

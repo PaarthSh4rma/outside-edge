@@ -1,5 +1,6 @@
 from app.schemas.article import Article
 from app.services.feed_sources.registry import get_feed_sources
+from app.services.url_normalizer import normalize_article_url
 
 
 class ArticleService:
@@ -20,7 +21,7 @@ class ArticleService:
         deduplicated: list[Article] = []
 
         for article in articles:
-            article_url = str(article.url)
+            article_url = normalize_article_url(str(article.url))
 
             if article_url in seen_urls:
                 continue

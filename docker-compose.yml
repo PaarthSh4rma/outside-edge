@@ -11,6 +11,33 @@ services:
       - "5432:5432"
     volumes:
       - silly_point_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sillypoint -d silly_point_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg2://sillypoint:sillypoint@postgres:5432/silly_point_db
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-local-development-key}
+      CORS_ORIGINS: http://127.0.0.1:8080,http://localhost:8080
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://127.0.0.1:8000
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
 
 volumes:
   silly_point_postgres_data:
