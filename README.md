@@ -53,6 +53,23 @@ curl -X POST http://127.0.0.1:8000/admin/generate-issue \
 The first request fetches RSS entries and safely stores new articles. The second
 generates or replaces today's published issue from the stored articles.
 
+The same workflow is available as production-safe CLI jobs. These commands reuse
+the backend services and repositories directly; they do not call local HTTP
+endpoints:
+
+```bash
+cd backend
+python -m app.jobs.fetch_news
+python -m app.jobs.generate_issue
+python -m app.jobs.publish_daily_yorker --dry-run
+```
+
+`publish_daily_yorker --dry-run` fetches news, generates or replaces today's
+issue, renders the latest issue email, and prints recipient counts without
+sending real email. `publish_daily_yorker --send` attempts delivery but still
+respects `EMAIL_DRY_RUN=true`, and successful deliveries are not repeated for
+the same issue/subscriber.
+
 Open the product views at:
 
 - Homepage: `http://127.0.0.1:5173/`
@@ -145,6 +162,148 @@ confirmation page without changing subscription state. Confirming performs an
 idempotent `POST` and marks the subscriber inactive. Submitting the public
 signup form again explicitly reactivates that subscriber.
 
+## Local full-flow checklist
+
+1. Start PostgreSQL:
+
+   ```bash
+   docker compose up postgres
+   ```
+
+2. Run migrations:
+
+   ```bash
+   cd backend
+   alembic upgrade head
+   ```
+
+3. Start the API and frontend in separate terminals:
+
+   ```bash
+   cd backend
+   uvicorn app.main:app --reload
+   ```
+
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+4. Prepare local content:
+
+   ```bash
+   cd backend
+   python -m app.jobs.fetch_news
+   python -m app.jobs.generate_issue
+   ```
+
+5. Seed mock scores and inspect the product:
+
+   ```bash
+   curl -X POST http://127.0.0.1:8000/admin/sync-scores \
+     -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
+   ```
+
+   Open `http://127.0.0.1:5173/`, `http://127.0.0.1:5173/matches`,
+   `http://127.0.0.1:5173/daily-yorker`, and
+   `http://127.0.0.1:5173/daily-yorker/YYYY-MM-DD`.
+
+6. Preview and dry-run email:
+
+   ```bash
+   curl -X POST http://127.0.0.1:8000/admin/email/preview-latest \
+     -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
+
+   python -m app.jobs.publish_daily_yorker --dry-run
+   ```
+
+The dry-run publisher output includes fetched, saved, generated, would-send,
+sent, skipped, and failed counts.
+
+## Deployment on Render
+
+This repository includes `render.yaml` for a Render Blueprint with:
+
+- `outside-edge-api`: FastAPI web service.
+- `outside-edge-web`: React/Vite static site.
+- `outside-edge-db`: Render PostgreSQL database.
+- `outside-edge-daily-yorker`: daily cron job.
+
+Render service settings:
+
+- Backend root directory: `backend`
+- Backend build command: `pip install -r requirements.txt`
+- Backend pre-deploy command: `alembic upgrade head`
+- Backend start command:
+  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Backend health check path: `/health`
+- Frontend root directory: `frontend`
+- Frontend build command: `npm ci && npm run build`
+- Frontend publish directory: `./dist`
+
+Required backend environment variables:
+
+- `DATABASE_URL`: set from the Render PostgreSQL connection string.
+- `ADMIN_API_KEY`: dashboard-entered secret.
+- `CORS_ORIGINS`: production frontend URL.
+- `EMAIL_FROM`: clear Outside Edge sender identity.
+- `PUBLIC_SITE_URL`: production frontend URL.
+- `EMAIL_DRY_RUN`: keep `true` for first deploys.
+- `RESEND_API_KEY`: dashboard-entered secret, only needed for real delivery.
+- `EMAIL_REPLY_TO`: optional.
+- `SCORE_STALE_AFTER_MINUTES`: optional, defaults to `5`.
+
+Required frontend environment variable:
+
+- `VITE_API_BASE_URL`: production backend URL.
+
+The blueprint uses `https://outside-edge-api.onrender.com` and
+`https://outside-edge-web.onrender.com` as default service URLs. If Render gives
+the services different public URLs or you attach custom domains, update
+`VITE_API_BASE_URL`, `CORS_ORIGINS`, and `PUBLIC_SITE_URL`.
+
+The local Docker Compose service and volume names still use older `silly-point`
+labels. They are local-only and can be cleaned up in a future maintenance pass.
+
+## Daily publisher on Render
+
+The default cron command in `render.yaml` is safe:
+
+```bash
+python -m app.jobs.publish_daily_yorker --dry-run
+```
+
+It is scheduled as `0 20 * * *`, which is 20:00 UTC. That corresponds to 07:00
+in Melbourne during daylight saving time and 06:00 during standard time. Render
+cron schedules use UTC, so adjust the cron expression if you want a different
+local publishing time.
+
+Expected dry-run output resembles:
+
+```text
+publish_daily_yorker mode=dry-run effective_dry_run=true fetched_count=...
+saved_count=... issue_date=YYYY-MM-DD issue_id=... article_count=...
+sections=Opening Spell=3, Powerplay=5, Around the Grounds=7
+would_send_count=... sent_count=0 skipped_count=... failed_count=0
+```
+
+To send for real after verification, change the cron command to:
+
+```bash
+python -m app.jobs.publish_daily_yorker --send
+```
+
+Real delivery still requires `EMAIL_DRY_RUN=false` and a valid
+`RESEND_API_KEY`. Duplicate-send protection prevents successful
+issue/subscriber deliveries from being sent again if the cron is rerun.
+
+After a cron run, verify:
+
+- Render logs show the expected counts.
+- Today's dated issue exists in the archive.
+- Email preview renders with source links and the web issue link.
+- Delivery counts match the active subscriber count.
+
 ## Database migrations
 
 Alembic is the only production schema authority. New databases should run:
@@ -178,8 +337,22 @@ comma-separated list and defaults to the local Vite origins.
 ```bash
 cd backend
 python -m pytest -q
+alembic upgrade head
+alembic check
 
 cd frontend
 npm run lint
 npm run build
 ```
+
+## Production email checklist
+
+1. First deploy with `EMAIL_DRY_RUN=true`.
+2. Run the daily cron as `--dry-run`.
+3. Check Render logs for fetched/saved/generated/would-send counts.
+4. Subscribe with your own email through the public form.
+5. Preview the latest email with `/admin/email/preview-latest`.
+6. Add `RESEND_API_KEY` in Render.
+7. Set `EMAIL_DRY_RUN=false`.
+8. Switch the cron command from `--dry-run` to `--send`.
+9. Never commit `.env` or production secrets.

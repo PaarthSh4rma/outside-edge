@@ -13,7 +13,7 @@ from app.services.ranking_service import ArticleRankingService
 
 class IssueService:
     """
-    Builds a daily Silly Point issue.
+    Builds a Daily Yorker issue.
 
     It supports:
     - in-memory generation for fast development
