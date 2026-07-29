@@ -220,7 +220,109 @@ signup form again explicitly reactivates that subscriber.
 The dry-run publisher output includes fetched, saved, generated, would-send,
 sent, skipped, and failed counts.
 
-## Deployment on Render
+## Zero-cost deployment fallback
+
+If Render asks for payment information, Outside Edge can still run in a
+zero-cost mode:
+
+- Frontend: Cloudflare Pages.
+- Database: Supabase Free Postgres.
+- Daily publisher: GitHub Actions scheduled workflow.
+- Backend API: local/manual for now, or a future free host if one is chosen.
+
+This mode is useful for publishing the static frontend and running the Daily
+Yorker pipeline safely. Without a public backend URL, API-backed frontend
+sections such as latest issue, archive, matches, and subscriber signup will load
+the app shell but will not fully work in production yet.
+
+### Supabase Free Postgres
+
+1. Create a Supabase project on the free plan.
+2. Open the project dashboard and choose **Connect** for database connection
+   details.
+3. Prefer the Session Pooler connection string if IPv4 compatibility is needed,
+   which is common from CI environments. Supabase direct database URLs are ideal
+   for migrations, but free direct endpoints may require IPv6.
+4. Save the connection string for local use and GitHub Actions.
+
+If Supabase gives you a URL beginning with `postgres://`, convert it to a
+SQLAlchemy-compatible URL before using it here:
+
+```text
+postgres://... -> postgresql+psycopg2://...
+```
+
+Preserve `sslmode=require` if it is present, or add it if your Supabase
+connection details require SSL:
+
+```text
+postgresql+psycopg2://postgres.PROJECT_REF:PASSWORD@aws-REGION.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+Run migrations against Supabase from your machine:
+
+```bash
+cd backend
+DATABASE_URL="postgresql+psycopg2://..." \
+ADMIN_API_KEY="local-migration-key" \
+EMAIL_FROM="Outside Edge <newsletter@example.com>" \
+PUBLIC_SITE_URL="https://your-project.pages.dev" \
+EMAIL_DRY_RUN=true \
+alembic upgrade head
+```
+
+### GitHub scheduled publisher
+
+The workflow at `.github/workflows/daily-yorker.yml` can be run manually with
+`workflow_dispatch` and also runs on a UTC cron schedule. It installs backend
+dependencies, runs `alembic upgrade head`, then runs:
+
+```bash
+python -m app.jobs.publish_daily_yorker --dry-run
+```
+
+Add these repository secrets in GitHub:
+
+- `DATABASE_URL`: Supabase Postgres URL.
+- `ADMIN_API_KEY`: long random value used by settings validation.
+- `EMAIL_FROM`: for example `Outside Edge <newsletter@example.com>`.
+- `PUBLIC_SITE_URL`: your Cloudflare Pages URL or custom domain.
+- `EMAIL_DRY_RUN`: `true`.
+
+Do not add `RESEND_API_KEY` for the dry-run workflow. The scheduled workflow is
+dry-run only for now and must report `effective_dry_run=true` and
+`sent_count=0`.
+
+For a future real-send switch:
+
+1. Run the workflow manually first and inspect logs.
+2. Add `RESEND_API_KEY` as a GitHub secret.
+3. Set `EMAIL_DRY_RUN=false`.
+4. Change the workflow command from `--dry-run` to `--send`.
+5. Run it manually again before trusting the schedule.
+
+### Cloudflare Pages frontend
+
+Create a Cloudflare Pages project connected to this repository:
+
+- Root directory: `frontend`
+- Build command: `npm ci && npm run build`
+- Build output directory: `dist`
+- Node version: pinned to `22` by `frontend/.node-version`
+
+The React Router fallback is handled by `frontend/public/_redirects`:
+
+```text
+/* /index.html 200
+```
+
+Only set `VITE_API_BASE_URL` when you have a public backend URL. If it is not
+set, the frontend defaults to `http://127.0.0.1:8000`, which is useful locally
+but not reachable from Cloudflare Pages visitors.
+
+## Optional Render deployment
+
+Render remains an optional future/card-backed deployment path.
 
 This repository includes `render.yaml` for a Render Blueprint with:
 

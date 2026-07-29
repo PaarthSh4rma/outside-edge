@@ -1,0 +1,46 @@
+name: Daily Yorker Publisher
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 20 * * *"
+
+concurrency:
+  group: daily-yorker-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish-dry-run:
+    name: Publish Daily Yorker dry run
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      PUBLIC_SITE_URL: ${{ secrets.PUBLIC_SITE_URL }}
+      EMAIL_DRY_RUN: ${{ secrets.EMAIL_DRY_RUN }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run Alembic migrations
+        run: alembic upgrade head
+
+      - name: Publish Daily Yorker dry run
+        run: python -m app.jobs.publish_daily_yorker --dry-run
