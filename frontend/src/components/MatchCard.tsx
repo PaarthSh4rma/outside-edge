@@ -14,6 +14,7 @@ export function MatchCard({
   themeMode: ThemeMode;
 }) {
   const snapshot = match.latest_score;
+  const isScheduled = match.status === "scheduled";
 
   return (
     <article
@@ -41,13 +42,15 @@ export function MatchCard({
           name={match.home_team.name}
           shortName={match.home_team.short_name}
           score={snapshot ? formatInnings(snapshot.home_score) : "Yet to bat"}
-          showScore={match.status !== "scheduled"}
+          showScore={!isScheduled}
+          fixtureMarker=""
         />
         <TeamScore
           name={match.away_team.name}
           shortName={match.away_team.short_name}
           score={snapshot ? formatInnings(snapshot.away_score) : "Yet to bat"}
-          showScore={match.status !== "scheduled"}
+          showScore={!isScheduled}
+          fixtureMarker="vs"
         />
       </div>
 
@@ -76,11 +79,13 @@ function TeamScore({
   shortName,
   score,
   showScore,
+  fixtureMarker,
 }: {
   name: string;
   shortName: string;
   score: string;
   showScore: boolean;
+  fixtureMarker: string;
 }) {
   return (
     <div className="grid grid-cols-[1fr_auto] items-baseline gap-3">
@@ -88,7 +93,7 @@ function TeamScore({
         <span className="sm:hidden">{shortName}</span>
         <span className="hidden sm:inline">{name}</span>
       </p>
-      <p className="text-lg font-black">{showScore ? score : shortName}</p>
+      <p className="text-lg font-black">{showScore ? score : fixtureMarker}</p>
     </div>
   );
 }

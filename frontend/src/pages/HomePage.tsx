@@ -16,12 +16,28 @@ export function HomePage({ themeMode }: { themeMode: ThemeMode }) {
   );
 
   useEffect(() => {
+    let isCancelled = false;
+
     apiGet<Issue>("/issues/latest")
-      .then(setIssue)
-      .catch((error: unknown) => {
-        setLoadState(error instanceof ApiError && error.status === 404 ? "empty" : "unavailable");
+      .then((loadedIssue) => {
+        if (!isCancelled) setIssue(loadedIssue);
       })
-      .finally(() => setIsLoading(false));
+      .catch((error: unknown) => {
+        if (!isCancelled) {
+          setLoadState(
+            error instanceof ApiError && error.status === 404
+              ? "empty"
+              : "unavailable",
+          );
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) setIsLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   return (

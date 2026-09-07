@@ -11,6 +11,10 @@ from app.services.article_service import ArticleService
 from app.services.ranking_service import ArticleRankingService
 
 
+class IssueGenerationError(Exception):
+    pass
+
+
 class IssueService:
     """
     Builds a Daily Yorker issue.
@@ -30,6 +34,9 @@ class IssueService:
 
     def generate_today_issue(self) -> Issue:
         articles = self.article_service.fetch_latest_articles()
+        if not articles:
+            raise IssueGenerationError("No articles are available for issue preview.")
+
         ranked_articles = self.ranking_service.rank_articles(articles)
 
         return Issue(
@@ -44,6 +51,10 @@ class IssueService:
         issue_repository = IssueRepository(db)
 
         latest_article_models = article_repository.get_latest_models(limit=50)
+        if not latest_article_models:
+            raise IssueGenerationError(
+                "No stored articles are available for issue generation."
+            )
 
         ranked_article_models = self._rank_article_models(latest_article_models)
 

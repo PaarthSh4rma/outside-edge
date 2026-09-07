@@ -39,11 +39,11 @@ class PublishDailyYorkerResult:
 
 def fetch_news(db: Session) -> FetchNewsResult:
     articles = ArticleService().fetch_latest_articles()
-    saved_articles = ArticleRepository(db).create_many_if_not_exists(articles)
+    save_result = ArticleRepository(db).save_many_if_not_exists(articles)
 
     return FetchNewsResult(
         fetched_count=len(articles),
-        saved_count=len(saved_articles),
+        saved_count=save_result.created_count,
     )
 
 

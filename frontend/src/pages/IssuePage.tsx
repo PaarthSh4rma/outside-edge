@@ -16,17 +16,25 @@ export function IssuePage({ themeMode }: { themeMode: ThemeMode }) {
   useEffect(() => {
     if (!issueDate) return;
 
+    let isCancelled = false;
+
     apiGet<Issue>(`/issues/${issueDate}`)
       .then((loadedIssue) => {
-        setIssue(loadedIssue);
+        if (!isCancelled) setIssue(loadedIssue);
       })
       .catch((error: unknown) => {
-        setLoadState(
-          error instanceof ApiError && error.status === 404
-            ? "not-found"
-            : "unavailable",
-        );
+        if (!isCancelled) {
+          setLoadState(
+            error instanceof ApiError && error.status === 404
+              ? "not-found"
+              : "unavailable",
+          );
+        }
       });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [issueDate]);
 
   return (

@@ -39,7 +39,7 @@ def test_fetch_news_job_persists_deduped_articles(db_session, monkeypatch):
     assert first_result.fetched_count == 2
     assert first_result.saved_count == 2
     assert second_result.fetched_count == 2
-    assert second_result.saved_count == 2
+    assert second_result.saved_count == 0
     assert len(ArticleRepository(db_session).get_latest()) == 2
 
 

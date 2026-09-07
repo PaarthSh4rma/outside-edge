@@ -10,7 +10,7 @@ export function ScoreSection({ themeMode }: { themeMode: ThemeMode }) {
   const upcoming = useMatches("upcoming");
   const matches = [...live.matches, ...upcoming.matches].slice(0, 3);
   const isLoading = live.isLoading || upcoming.isLoading;
-  const hasError = live.hasError && upcoming.hasError;
+  const hasError = live.hasError || upcoming.hasError;
 
   return (
     <section className="mt-10" aria-labelledby="scores-heading">

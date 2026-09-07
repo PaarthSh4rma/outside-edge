@@ -49,3 +49,41 @@ def test_repository_bulk_insert_is_transactional_and_idempotent(db_session):
     assert len(second_result) == 1
     assert first_result[0].id == second_result[0].id
     assert repository.get_latest() == first_result
+
+
+def test_admin_fetch_news_reports_newly_saved_count(client, monkeypatch):
+    class Feed:
+        def fetch_articles(self):
+            return [
+                make_article("https://example.com/story?utm_source=rss"),
+                make_article("https://example.com/story/"),
+            ]
+
+    monkeypatch.setattr(
+        "app.services.article_service.get_feed_sources",
+        lambda: [Feed()],
+    )
+    headers = {"X-Admin-API-Key": "test-admin-key"}
+
+    first_response = client.post("/admin/fetch-news", headers=headers)
+    second_response = client.post("/admin/fetch-news", headers=headers)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert first_response.json()["fetched_count"] == 1
+    assert first_response.json()["saved_count"] == 1
+    assert second_response.json()["fetched_count"] == 1
+    assert second_response.json()["saved_count"] == 0
+
+
+def test_public_articles_route_returns_ids_and_validates_limit(client, db_session):
+    ArticleRepository(db_session).create_many_if_not_exists(
+        [make_article("https://example.com/story")]
+    )
+
+    response = client.get("/articles?limit=1")
+    invalid_response = client.get("/articles?limit=0")
+
+    assert response.status_code == 200
+    assert response.json()[0]["id"] == 1
+    assert invalid_response.status_code == 422

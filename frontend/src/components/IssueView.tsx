@@ -11,6 +11,11 @@ export function IssueView({
   themeMode: ThemeMode;
   compact?: boolean;
 }) {
+  const articleCount = issue.sections.reduce(
+    (total, section) => total + section.articles.length,
+    0,
+  );
+
   return (
     <article>
       <header
@@ -39,57 +44,69 @@ export function IssueView({
         </p>
       </header>
 
-      <div className="mt-8 space-y-10">
-        {issue.sections.map((section) => (
-          <section key={section.name}>
-            <div className="mb-4">
-              <h2 className="text-xl font-black sm:text-2xl">{section.name}</h2>
-              <p
-                className={`mt-1 text-sm ${
-                  themeMode === "dark" ? "text-white/55" : "text-black/55"
+      {articleCount === 0 && (
+        <div className="mt-8 max-w-xl border-l-4 border-[#d7ff3f] py-3 pl-5">
+          <h2 className="text-2xl font-black">This issue is still being prepared.</h2>
+          <p className="mt-2 text-sm leading-6 opacity-60">
+            Stories will appear here once the briefing has been generated from
+            saved articles.
+          </p>
+        </div>
+      )}
+
+      {articleCount > 0 && (
+        <div className="mt-8 space-y-10">
+          {issue.sections.map((section) => (
+            <section key={section.name}>
+              <div className="mb-4">
+                <h2 className="text-xl font-black sm:text-2xl">{section.name}</h2>
+                <p
+                  className={`mt-1 text-sm ${
+                    themeMode === "dark" ? "text-white/55" : "text-black/55"
+                  }`}
+                >
+                  {section.description}
+                </p>
+              </div>
+              <div
+                className={`divide-y ${
+                  themeMode === "dark" ? "divide-white/10" : "divide-black/10"
                 }`}
               >
-                {section.description}
-              </p>
-            </div>
-            <div
-              className={`divide-y ${
-                themeMode === "dark" ? "divide-white/10" : "divide-black/10"
-              }`}
-            >
-              {section.articles.map((article, index) => (
-                <a
-                  key={article.id}
-                  href={article.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group grid grid-cols-[2rem_1fr] gap-3 py-5 first:pt-0"
-                >
-                  <span className="pt-1 text-xs font-black text-[#5fc47d]">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="mb-2 flex flex-wrap gap-x-2 text-xs font-bold uppercase text-current opacity-50">
-                      <span>{article.source}</span>
-                      {article.published_at && (
-                        <span>{formatDate(article.published_at)}</span>
+                {section.articles.map((article, index) => (
+                  <a
+                    key={article.id}
+                    href={article.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group grid grid-cols-[2rem_1fr] gap-3 py-5 first:pt-0"
+                  >
+                    <span className="pt-1 text-xs font-black text-[#5fc47d]">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="mb-2 flex flex-wrap gap-x-2 text-xs font-bold uppercase text-current opacity-50">
+                        <span>{article.source}</span>
+                        {article.published_at && (
+                          <span>{formatDate(article.published_at)}</span>
+                        )}
+                      </span>
+                      <span className="block text-lg font-black leading-snug group-hover:text-[#5fc47d] sm:text-xl">
+                        {article.title}
+                      </span>
+                      {article.summary && (
+                        <span className="mt-2 line-clamp-3 block text-sm leading-6 opacity-60">
+                          {stripHtml(article.summary)}
+                        </span>
                       )}
                     </span>
-                    <span className="block text-lg font-black leading-snug group-hover:text-[#5fc47d] sm:text-xl">
-                      {article.title}
-                    </span>
-                    {article.summary && (
-                      <span className="mt-2 line-clamp-3 block text-sm leading-6 opacity-60">
-                        {stripHtml(article.summary)}
-                      </span>
-                    )}
-                  </span>
-                </a>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+                  </a>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </article>
   );
 }

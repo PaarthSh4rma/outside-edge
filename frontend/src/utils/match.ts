@@ -23,11 +23,14 @@ export function matchStatusLabel(match: Match) {
 }
 
 export function formatMatchStart(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Time unavailable";
+
   return new Intl.DateTimeFormat("en-AU", {
     weekday: "short",
     day: "numeric",
     month: "short",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(date);
 }

@@ -1,131 +1,171 @@
 # Outside Edge
 
-Outside Edge is an ad-free cricket intelligence site built around RSS news
-ingestion and the Daily Yorker briefing.
+Outside Edge is an ad-free cricket intelligence application built with a
+FastAPI backend, PostgreSQL persistence, Alembic migrations, and a React/Vite
+frontend. It ingests cricket news from RSS feeds, stores and deduplicates
+articles, generates the Daily Yorker briefing, exposes a match centre backed by
+a provider-neutral score layer, and supports safe newsletter preview/dry-run
+delivery through Resend.
 
-## Local stack
+This is a modular monolith portfolio project. The backend follows a
+route -> service -> repository structure, and operational jobs reuse the same
+services directly rather than calling HTTP endpoints.
 
-The complete stack can run with Docker:
+## Implemented Features
+
+- RSS ingestion from ESPNcricinfo and BBC Cricket.
+- URL normalization and idempotent article persistence.
+- Daily Yorker issue generation from stored articles.
+- Public issue APIs for latest issue, archive, and dated issues.
+- Subscriber signup, reactivation, and admin subscriber listing.
+- Email rendering for HTML and plain text Daily Yorker newsletters.
+- Resend email provider abstraction with safe dry-run defaults.
+- Duplicate-send protection per issue/subscriber.
+- Hashed unsubscribe tokens with no-login unsubscribe confirmation.
+- Provider-neutral cricket score schema with realistic mock Test, ODI, and T20
+  data.
+- Public match APIs for live, upcoming, recent, and individual matches.
+- React frontend with homepage, Daily Yorker archive, dated issue view, match
+  centre, subscriber form, dark/light theme, responsive layout, and empty/error
+  states.
+- CLI jobs for fetching news, generating issues, and running the daily
+  publisher.
+- GitHub Actions CI for backend tests/migrations and frontend lint/build.
+- Safe scheduled Daily Yorker dry-run workflow.
+- Deployment documentation for a zero-cost fallback and optional Render setup.
+
+## What Is Intentionally Mocked Or Limited
+
+- Match data uses `MockScoreProvider`. The database/API shape is
+  provider-neutral, but no real cricket score API is integrated yet.
+- Newsletter delivery can send through Resend only when explicitly configured.
+  Local, CI, and scheduled workflows default to dry-run and do not send email.
+- The low-cost deployment path uses a public static frontend, a standalone
+  FastAPI backend, Supabase Postgres, and GitHub Actions for scheduled dry-runs.
+- There is no LLM/RAG layer, no user accounts, no betting/odds, and no
+  ball-by-ball score model.
+
+## Architecture
+
+```text
+frontend/                 React, Vite, React Router, Tailwind CSS
+backend/app/api/          FastAPI route modules
+backend/app/services/     Business logic and provider abstractions
+backend/app/repositories/ SQLAlchemy database access
+backend/app/models/       SQLAlchemy ORM models
+backend/app/schemas/      Pydantic request/response schemas
+backend/app/jobs/         CLI entrypoints for operational workflows
+backend/migrations/       Alembic migrations
+.github/workflows/        CI and scheduled dry-run publisher
+```
+
+Core backend flow:
+
+```text
+RSS feeds -> ArticleService -> ArticleRepository -> PostgreSQL
+stored articles -> IssueService -> IssueRepository -> /issues APIs -> React UI
+subscribers + issue -> EmailService -> renderer/provider -> delivery records
+score provider -> ScoreService -> ScoreRepository -> /matches APIs -> React UI
+```
+
+## Local Setup
+
+Copy the backend environment file:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Minimum local backend env:
+
+```env
+DATABASE_URL=postgresql+psycopg2://sillypoint:sillypoint@localhost:5432/silly_point_db
+DATABASE_SSLMODE=
+ADMIN_API_KEY=replace-with-a-long-random-secret
+CORS_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
+SCORE_STALE_AFTER_MINUTES=5
+EMAIL_FROM=Outside Edge <newsletter@example.com>
+PUBLIC_SITE_URL=http://127.0.0.1:5173
+EMAIL_DRY_RUN=true
+RESEND_API_KEY=
+```
+
+Start PostgreSQL with Docker:
+
+```bash
+docker compose up postgres
+```
+
+Install and run the backend:
+
+```bash
+cd backend
+python -m venv venv
+venv/bin/pip install -r requirements.txt
+venv/bin/alembic upgrade head
+venv/bin/uvicorn app.main:app --reload
+```
+
+Install and run the frontend:
+
+```bash
+cd frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+Local URLs:
+
+- Frontend: `http://127.0.0.1:5173`
+- Backend docs: `http://127.0.0.1:8000/docs`
+- Health check: `http://127.0.0.1:8000/health`
+
+The complete Docker stack is also available:
 
 ```bash
 ADMIN_API_KEY=replace-me docker compose up --build
 ```
 
-- Frontend: `http://127.0.0.1:8080`
-- API and OpenAPI docs: `http://127.0.0.1:8000/docs`
-- PostgreSQL: `localhost:5432`
+Docker frontend: `http://127.0.0.1:8080`
 
-For local development without containers, copy `backend/.env.example` to
-`backend/.env`, install `backend/requirements.txt`, and run:
+## Daily Workflow
 
-```bash
-cd backend
-alembic upgrade head
-uvicorn app.main:app --reload
-```
-
-In another terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The frontend requires Node.js 20.19 or newer. Set `VITE_API_BASE_URL` when the
-API is not available at `http://127.0.0.1:8000`.
-
-## Daily briefing workflow
-
-With PostgreSQL, the backend, and the frontend running, use the configured admin
-key to prepare today's Daily Yorker:
+Set the admin key for local API calls:
 
 ```bash
 export OUTSIDE_EDGE_ADMIN_KEY=replace-with-your-admin-key
+```
 
+Fetch RSS news:
+
+```bash
 curl -X POST http://127.0.0.1:8000/admin/fetch-news \
   -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
+```
 
+Generate today's Daily Yorker:
+
+```bash
 curl -X POST http://127.0.0.1:8000/admin/generate-issue \
   -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
 ```
 
-The first request fetches RSS entries and safely stores new articles. The second
-generates or replaces today's published issue from the stored articles.
-
-The same workflow is available as production-safe CLI jobs. These commands reuse
-the backend services and repositories directly; they do not call local HTTP
-endpoints:
-
-```bash
-cd backend
-python -m app.jobs.fetch_news
-python -m app.jobs.generate_issue
-python -m app.jobs.publish_daily_yorker --dry-run
-```
-
-`publish_daily_yorker --dry-run` fetches news, generates or replaces today's
-issue, renders the latest issue email, and prints recipient counts without
-sending real email. `publish_daily_yorker --send` attempts delivery but still
-respects `EMAIL_DRY_RUN=true`, and successful deliveries are not repeated for
-the same issue/subscriber.
-
-Open the product views at:
-
-- Homepage: `http://127.0.0.1:5173/`
-- Archive: `http://127.0.0.1:5173/daily-yorker`
-- Dated issue: `http://127.0.0.1:5173/daily-yorker/YYYY-MM-DD`
-
-Use today's date in ISO format for the issue generated above. The Docker
-frontend exposes the same paths at `http://127.0.0.1:8080`.
-
-## Mock match scores
-
-Milestone 2 uses a small provider-neutral mock feed. Seed or refresh it through
-the protected admin endpoint:
+Seed or refresh mock scores:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/admin/sync-scores \
   -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
 ```
 
-Read the live match API:
-
-```bash
-curl http://127.0.0.1:8000/matches/live
-```
-
-The full match centre is available at `http://127.0.0.1:5173/matches`, or at
-`http://127.0.0.1:8080/matches` when using Docker. Repeating the sync updates
-the same mock records without duplicating matches or identical snapshots.
-`SCORE_STALE_AFTER_MINUTES` controls the live-score freshness threshold and
-defaults to five minutes.
-
-## Daily Yorker email delivery
-
-Configure the canonical sender and public site URL:
-
-```env
-EMAIL_FROM=Outside Edge <newsletter@example.com>
-PUBLIC_SITE_URL=https://outside-edge.example
-EMAIL_REPLY_TO=editor@example.com
-EMAIL_DRY_RUN=true
-RESEND_API_KEY=
-```
-
-`EMAIL_FROM` and `PUBLIC_SITE_URL` are required. `EMAIL_REPLY_TO` is optional.
-Keep `EMAIL_DRY_RUN=true` for local development. `RESEND_API_KEY` is only
-required when real delivery is enabled.
-
-Preview the latest published issue without creating deliveries or contacting
-Resend:
+Preview the latest email:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/admin/email/preview-latest \
   -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
 ```
 
-Run the full recipient selection and duplicate checks in dry-run mode:
+Run a safe email dry-run:
 
 ```bash
 curl -X POST \
@@ -133,328 +173,217 @@ curl -X POST \
   -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
 ```
 
-To send a specific published issue, use:
+## CLI Jobs
 
-```bash
-curl -X POST \
-  "http://127.0.0.1:8000/admin/email/send-issue/YYYY-MM-DD?dry_run=true" \
-  -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
-```
-
-Real delivery requires all three safeguards:
-
-1. Set `EMAIL_DRY_RUN=false`.
-2. Configure a valid `RESEND_API_KEY`.
-3. Call a send route with `dry_run=false`.
-
-```bash
-curl -X POST \
-  "http://127.0.0.1:8000/admin/email/send-latest?dry_run=false" \
-  -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
-```
-
-Successful issue/subscriber deliveries are not repeated unless `force=true` is
-explicitly supplied. Provider failures are recorded per recipient and do not
-stop the remainder of the batch.
-
-Every email contains a no-login unsubscribe link. Opening it with `GET` shows a
-confirmation page without changing subscription state. Confirming performs an
-idempotent `POST` and marks the subscriber inactive. Submitting the public
-signup form again explicitly reactivates that subscriber.
-
-## Local full-flow checklist
-
-1. Start PostgreSQL:
-
-   ```bash
-   docker compose up postgres
-   ```
-
-2. Run migrations:
-
-   ```bash
-   cd backend
-   alembic upgrade head
-   ```
-
-3. Start the API and frontend in separate terminals:
-
-   ```bash
-   cd backend
-   uvicorn app.main:app --reload
-   ```
-
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-
-4. Prepare local content:
-
-   ```bash
-   cd backend
-   python -m app.jobs.fetch_news
-   python -m app.jobs.generate_issue
-   ```
-
-5. Seed mock scores and inspect the product:
-
-   ```bash
-   curl -X POST http://127.0.0.1:8000/admin/sync-scores \
-     -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
-   ```
-
-   Open `http://127.0.0.1:5173/`, `http://127.0.0.1:5173/matches`,
-   `http://127.0.0.1:5173/daily-yorker`, and
-   `http://127.0.0.1:5173/daily-yorker/YYYY-MM-DD`.
-
-6. Preview and dry-run email:
-
-   ```bash
-   curl -X POST http://127.0.0.1:8000/admin/email/preview-latest \
-     -H "X-Admin-API-Key: $OUTSIDE_EDGE_ADMIN_KEY"
-
-   python -m app.jobs.publish_daily_yorker --dry-run
-   ```
-
-The dry-run publisher output includes fetched, saved, generated, would-send,
-sent, skipped, and failed counts.
-
-## Zero-cost deployment fallback
-
-If Render asks for payment information, Outside Edge can still run in a
-zero-cost mode:
-
-- Frontend: Cloudflare Pages.
-- Database: Supabase Free Postgres.
-- Daily publisher: GitHub Actions scheduled workflow.
-- Backend API: local/manual for now, or a future free host if one is chosen.
-
-This mode is useful for publishing the static frontend and running the Daily
-Yorker pipeline safely. Without a public backend URL, API-backed frontend
-sections such as latest issue, archive, matches, and subscriber signup will load
-the app shell but will not fully work in production yet.
-
-### Supabase Free Postgres
-
-1. Create a Supabase project on the free plan.
-2. Open the project dashboard and choose **Connect** for database connection
-   details.
-3. Prefer the Session Pooler connection string if IPv4 compatibility is needed,
-   which is common from CI environments. Supabase direct database URLs are ideal
-   for migrations, but free direct endpoints may require IPv6.
-4. Save the connection string for local use and GitHub Actions.
-
-If Supabase gives you a URL beginning with `postgres://`, convert it to a
-SQLAlchemy-compatible URL before using it here:
-
-```text
-postgres://... -> postgresql+psycopg2://...
-```
-
-Preserve `sslmode=require` if it is present, or add it if your Supabase
-connection details require SSL:
-
-```text
-postgresql+psycopg2://postgres.PROJECT_REF:PASSWORD@aws-REGION.pooler.supabase.com:5432/postgres?sslmode=require
-```
-
-Run migrations against Supabase from your machine:
+The same operational workflow can run without HTTP:
 
 ```bash
 cd backend
-DATABASE_URL="postgresql+psycopg2://..." \
-ADMIN_API_KEY="local-migration-key" \
-EMAIL_FROM="Outside Edge <newsletter@example.com>" \
-PUBLIC_SITE_URL="https://your-project.pages.dev" \
-EMAIL_DRY_RUN=true \
-alembic upgrade head
+venv/bin/python -m app.jobs.fetch_news
+venv/bin/python -m app.jobs.generate_issue
+venv/bin/python -m app.jobs.publish_daily_yorker --dry-run
 ```
 
-### GitHub scheduled publisher
+The publisher fetches news, generates or replaces today's issue while
+preserving issue delivery history, renders the email, and reports fetched,
+saved, article, recipient, sent, skipped, and failed counts.
 
-The workflow at `.github/workflows/daily-yorker.yml` can be run manually with
-`workflow_dispatch` and also runs on a UTC cron schedule. It installs backend
-dependencies, runs `alembic upgrade head`, then runs:
+`--send` is available, but real delivery still requires all safeguards:
 
-```bash
-python -m app.jobs.publish_daily_yorker --dry-run
-```
+1. `EMAIL_DRY_RUN=false`
+2. a valid `RESEND_API_KEY`
+3. the command or route using `dry_run=false` / `--send`
 
-Add these repository secrets in GitHub:
+Successful deliveries are not repeated for the same issue/subscriber unless
+`force=true` is supplied through the admin route.
 
-- `DATABASE_URL`: Supabase Postgres URL.
-- `ADMIN_API_KEY`: long random value used by settings validation.
-- `EMAIL_FROM`: for example `Outside Edge <newsletter@example.com>`.
-- `PUBLIC_SITE_URL`: your Cloudflare Pages URL or custom domain.
-- `EMAIL_DRY_RUN`: `true`.
+## Public API
 
-Do not add `RESEND_API_KEY` for the dry-run workflow. The scheduled workflow is
-dry-run only for now and must report `effective_dry_run=true` and
-`sent_count=0`.
+Selected public endpoints:
 
-For a future real-send switch:
+- `GET /health`
+- `GET /articles?limit=50`
+- `GET /issues/latest`
+- `GET /issues`
+- `GET /issues/{issue_date}`
+- `POST /subscribers`
+- `GET /matches/live`
+- `GET /matches/upcoming`
+- `GET /matches/recent`
+- `GET /matches/{match_id}`
+- `GET /unsubscribe/{token}`
+- `POST /unsubscribe/{token}`
 
-1. Run the workflow manually first and inspect logs.
-2. Add `RESEND_API_KEY` as a GitHub secret.
-3. Set `EMAIL_DRY_RUN=false`.
-4. Change the workflow command from `--dry-run` to `--send`.
-5. Run it manually again before trusting the schedule.
-
-### Cloudflare Pages frontend
-
-Create a Cloudflare Pages project connected to this repository:
-
-- Root directory: `frontend`
-- Build command: `npm ci && npm run build`
-- Build output directory: `dist`
-- Node version: pinned to `22` by `frontend/.node-version`
-
-The React Router fallback is handled by `frontend/public/_redirects`:
-
-```text
-/* /index.html 200
-```
-
-Only set `VITE_API_BASE_URL` when you have a public backend URL. If it is not
-set, the frontend defaults to `http://127.0.0.1:8000`, which is useful locally
-but not reachable from Cloudflare Pages visitors.
-
-## Optional Render deployment
-
-Render remains an optional future/card-backed deployment path.
-
-This repository includes `render.yaml` for a Render Blueprint with:
-
-- `outside-edge-api`: FastAPI web service.
-- `outside-edge-web`: React/Vite static site.
-- `outside-edge-db`: Render PostgreSQL database.
-- `outside-edge-daily-yorker`: daily cron job.
-
-Render service settings:
-
-- Backend root directory: `backend`
-- Backend build command: `pip install -r requirements.txt`
-- Backend pre-deploy command: `alembic upgrade head`
-- Backend start command:
-  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Backend health check path: `/health`
-- Frontend root directory: `frontend`
-- Frontend build command: `npm ci && npm run build`
-- Frontend publish directory: `./dist`
-
-Required backend environment variables:
-
-- `DATABASE_URL`: set from the Render PostgreSQL connection string.
-- `ADMIN_API_KEY`: dashboard-entered secret.
-- `CORS_ORIGINS`: production frontend URL.
-- `EMAIL_FROM`: clear Outside Edge sender identity.
-- `PUBLIC_SITE_URL`: production frontend URL.
-- `EMAIL_DRY_RUN`: keep `true` for first deploys.
-- `RESEND_API_KEY`: dashboard-entered secret, only needed for real delivery.
-- `EMAIL_REPLY_TO`: optional.
-- `SCORE_STALE_AFTER_MINUTES`: optional, defaults to `5`.
-
-Required frontend environment variable:
-
-- `VITE_API_BASE_URL`: production backend URL.
-
-The blueprint uses `https://outside-edge-api.onrender.com` and
-`https://outside-edge-web.onrender.com` as default service URLs. If Render gives
-the services different public URLs or you attach custom domains, update
-`VITE_API_BASE_URL`, `CORS_ORIGINS`, and `PUBLIC_SITE_URL`.
-
-The local Docker Compose service and volume names still use older `silly-point`
-labels. They are local-only and can be cleaned up in a future maintenance pass.
-
-## Daily publisher on Render
-
-The default cron command in `render.yaml` is safe:
-
-```bash
-python -m app.jobs.publish_daily_yorker --dry-run
-```
-
-It is scheduled as `0 20 * * *`, which is 20:00 UTC. That corresponds to 07:00
-in Melbourne during daylight saving time and 06:00 during standard time. Render
-cron schedules use UTC, so adjust the cron expression if you want a different
-local publishing time.
-
-Expected dry-run output resembles:
-
-```text
-publish_daily_yorker mode=dry-run effective_dry_run=true fetched_count=...
-saved_count=... issue_date=YYYY-MM-DD issue_id=... article_count=...
-sections=Opening Spell=3, Powerplay=5, Around the Grounds=7
-would_send_count=... sent_count=0 skipped_count=... failed_count=0
-```
-
-To send for real after verification, change the cron command to:
-
-```bash
-python -m app.jobs.publish_daily_yorker --send
-```
-
-Real delivery still requires `EMAIL_DRY_RUN=false` and a valid
-`RESEND_API_KEY`. Duplicate-send protection prevents successful
-issue/subscriber deliveries from being sent again if the cron is rerun.
-
-After a cron run, verify:
-
-- Render logs show the expected counts.
-- Today's dated issue exists in the archive.
-- Email preview renders with source links and the web issue link.
-- Delivery counts match the active subscriber count.
-
-## Database migrations
-
-Alembic is the only production schema authority. New databases should run:
-
-```bash
-cd backend
-alembic upgrade head
-```
-
-For a database created by the pre-Alembic application, mark the existing schema
-as the baseline before applying the normalized URL migration:
-
-```bash
-alembic stamp 20260709_0001
-alembic upgrade head
-```
-
-## Admin API
-
-Every `/admin` route requires the configured key:
+Every `/admin` route requires:
 
 ```text
 X-Admin-API-Key: your-admin-key
 ```
 
-`DATABASE_URL` and `ADMIN_API_KEY` are required at startup. `CORS_ORIGINS` is a
-comma-separated list and defaults to the local Vite origins.
+## Testing And Quality
 
-## Checks
+Backend:
 
 ```bash
 cd backend
-python -m pytest -q
-alembic upgrade head
-alembic check
+venv/bin/python -m pytest -q
+EMAIL_FROM="Outside Edge <newsletter@example.com>" \
+PUBLIC_SITE_URL="http://127.0.0.1:5173" \
+EMAIL_DRY_RUN=true \
+venv/bin/alembic upgrade head
+EMAIL_FROM="Outside Edge <newsletter@example.com>" \
+PUBLIC_SITE_URL="http://127.0.0.1:5173" \
+EMAIL_DRY_RUN=true \
+venv/bin/alembic check
+```
 
+Frontend:
+
+```bash
 cd frontend
 npm run lint
 npm run build
 ```
 
-## Production email checklist
+GitHub Actions runs backend tests, Alembic upgrade/check, frontend lint, and
+frontend build on pull requests and pushes to `main`.
 
-1. First deploy with `EMAIL_DRY_RUN=true`.
-2. Run the daily cron as `--dry-run`.
-3. Check Render logs for fetched/saved/generated/would-send counts.
-4. Subscribe with your own email through the public form.
-5. Preview the latest email with `/admin/email/preview-latest`.
-6. Add `RESEND_API_KEY` in Render.
-7. Set `EMAIL_DRY_RUN=false`.
-8. Switch the cron command from `--dry-run` to `--send`.
-9. Never commit `.env` or production secrets.
+## Deployment
+
+No deployment is included or assumed. The repository is prepared for a
+low-cost/manual deployment topology:
+
+- Frontend: Cloudflare Pages.
+- Database: Supabase Postgres.
+- Backend: standalone FastAPI web service on Render or Koyeb.
+- Daily publisher: GitHub Actions scheduled workflow.
+- Email: dry-run only by default.
+
+### Supabase Postgres
+
+Create a Supabase project and copy a Postgres connection string from the
+dashboard. For IPv4-only hosts, use the Session Pooler connection string. The
+backend accepts either `postgres://...` or `postgresql://...` and normalizes it
+for SQLAlchemy.
+
+Recommended production database env:
+
+```text
+DATABASE_URL=postgres://postgres.project-ref:password@aws-region.pooler.supabase.com:5432/postgres
+DATABASE_SSLMODE=require
+```
+
+If your Supabase URL already includes `sslmode=require` or
+`sslmode=verify-full`, keep it in the URL. The optional `DATABASE_SSLMODE`
+setting only adds an SSL mode when the URL does not already include one.
+
+Run migrations against Supabase:
+
+```bash
+cd backend
+DATABASE_URL="postgres://..." \
+DATABASE_SSLMODE=require \
+ADMIN_API_KEY="migration-only-secret" \
+EMAIL_FROM="Outside Edge <newsletter@example.com>" \
+PUBLIC_SITE_URL="https://your-project.pages.dev" \
+EMAIL_DRY_RUN=true \
+venv/bin/alembic upgrade head
+```
+
+### Backend On Render Or Koyeb
+
+Deploy only the `backend` directory as a Python web service.
+
+Backend environment variables:
+
+- `DATABASE_URL`: Supabase Postgres or Session Pooler connection string.
+- `DATABASE_SSLMODE`: `require` unless the URL already has `sslmode`.
+- `ADMIN_API_KEY`: long random secret used for `/admin` routes.
+- `CORS_ORIGINS`: comma-separated Cloudflare Pages origins, for example
+  `https://your-project.pages.dev,https://outside-edge.example.com`.
+- `SCORE_STALE_AFTER_MINUTES`: `5`.
+- `EMAIL_FROM`: `Outside Edge <newsletter@example.com>` or a verified sender
+  later.
+- `PUBLIC_SITE_URL`: Cloudflare Pages URL.
+- `EMAIL_REPLY_TO`: optional.
+- `EMAIL_DRY_RUN`: `true`.
+- `RESEND_API_KEY`: leave unset while email is dry-run only.
+
+Render settings:
+
+- Root directory: `backend`
+- Build command: `pip install -r requirements.txt`
+- Pre-deploy command: `alembic upgrade head`
+- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Health check path: `/health`
+
+Koyeb settings:
+
+- Service type: Python web service from the `backend` directory.
+- Build command: `pip install -r requirements.txt`
+- Run command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Expose the HTTP port provided through `PORT`.
+- Run `alembic upgrade head` from GitHub Actions or locally before/after the
+  first deploy, since this repository does not require a hosted cron or worker.
+
+`render.yaml` remains as an optional Render web/static blueprint, but it no
+longer provisions Render PostgreSQL or Render cron. Use Supabase for the
+database and GitHub Actions for the scheduled publisher.
+
+### Cloudflare Pages Frontend
+
+Cloudflare Pages settings:
+
+- Root directory: `frontend`
+- Build command: `npm ci && npm run build`
+- Output directory: `dist`
+- Node version: pinned by `frontend/.node-version`
+- Environment variable: `VITE_API_BASE_URL=https://your-backend.example.com`
+
+React Router deep links are handled by `frontend/public/_redirects`.
+
+If `VITE_API_BASE_URL` is omitted, API-backed sections will show unavailable
+states because the frontend intentionally does not hardcode a backend URL.
+
+### GitHub Actions Scheduler
+
+Add these GitHub repository secrets:
+
+- `DATABASE_URL`
+- `DATABASE_SSLMODE` set to `require` if the URL does not already include
+  `sslmode`
+- `ADMIN_API_KEY`
+- `EMAIL_FROM`
+- `PUBLIC_SITE_URL`
+- `EMAIL_DRY_RUN` set to `true`
+
+The scheduled workflow at `.github/workflows/daily-yorker.yml` runs:
+
+```bash
+python -m app.jobs.publish_daily_yorker --dry-run
+```
+
+Before publishing, the workflow runs `alembic upgrade head` against the same
+Supabase database. It does not require `RESEND_API_KEY` and must not send real
+email while the command remains `--dry-run` and `EMAIL_DRY_RUN=true`.
+
+To enable real newsletter sending later:
+
+1. Run the workflow manually and confirm `effective_dry_run=true`.
+2. Add `RESEND_API_KEY` as a GitHub secret.
+3. Set `EMAIL_DRY_RUN=false`.
+4. Change the scheduled command from `--dry-run` to `--send`.
+5. Run manually again before trusting the schedule.
+
+Keep the scheduled workflow dry-run until a verified Resend sender, seed
+subscriber, and manual preview have all been checked.
+
+## Resume Positioning
+
+This project is safe to describe as a complete full-stack portfolio application
+with automated ingestion, PostgreSQL persistence, issue generation, public APIs,
+subscriber management, safe newsletter workflows, mock/provider-neutral scores,
+CI, and documented deployment options.
+
+Do not describe it as using live score data, AI-generated insight, RAG, or a
+fully hosted production backend unless those are added later.

@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -8,6 +10,12 @@ from app.schemas.article import Article
 from app.services.url_normalizer import normalize_article_url
 
 
+@dataclass(frozen=True)
+class ArticleSaveResult:
+    articles: list[ArticleModel]
+    created_count: int
+
+
 class ArticleRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -16,8 +24,11 @@ class ArticleRepository:
         return self.create_many_if_not_exists([article])[0]
 
     def create_many_if_not_exists(self, articles: list[Article]) -> list[ArticleModel]:
+        return self.save_many_if_not_exists(articles).articles
+
+    def save_many_if_not_exists(self, articles: list[Article]) -> ArticleSaveResult:
         if not articles:
-            return []
+            return ArticleSaveResult(articles=[], created_count=0)
 
         values_by_url: dict[str, dict] = {}
         ordered_urls: list[str] = []
@@ -38,6 +49,13 @@ class ArticleRepository:
                 "category": article.category,
             }
 
+        existing_urls = {
+            article.normalized_url
+            for article in self.db.query(ArticleModel.normalized_url)
+            .filter(ArticleModel.normalized_url.in_(ordered_urls))
+            .all()
+        }
+
         statement = self._insert_statement(list(values_by_url.values()))
         self.db.execute(statement)
         self.db.commit()
@@ -49,7 +67,10 @@ class ArticleRepository:
             .all()
         }
 
-        return [saved_by_url[url] for url in ordered_urls]
+        return ArticleSaveResult(
+            articles=[saved_by_url[url] for url in ordered_urls],
+            created_count=sum(1 for url in ordered_urls if url not in existing_urls),
+        )
 
     def _insert_statement(self, values: list[dict]):
         dialect_name = self.db.get_bind().dialect.name
@@ -68,15 +89,21 @@ class ArticleRepository:
     def get_latest(self, limit: int = 50) -> list[ArticleModel]:
         return (
             self.db.query(ArticleModel)
-            .order_by(ArticleModel.published_at.desc().nullslast(), ArticleModel.created_at.desc())
+            .order_by(
+                ArticleModel.published_at.desc().nullslast(),
+                ArticleModel.created_at.desc(),
+            )
             .limit(limit)
             .all()
         )
-    
+
     def get_latest_models(self, limit: int = 50) -> list[ArticleModel]:
         return (
             self.db.query(ArticleModel)
-            .order_by(ArticleModel.published_at.desc().nullslast(), ArticleModel.created_at.desc())
+            .order_by(
+                ArticleModel.published_at.desc().nullslast(),
+                ArticleModel.created_at.desc(),
+            )
             .limit(limit)
             .all()
         )

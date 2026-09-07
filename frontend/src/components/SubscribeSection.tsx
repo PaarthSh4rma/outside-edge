@@ -54,7 +54,11 @@ export function SubscribeSection({ themeMode }: { themeMode: ThemeMode }) {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <label className="sr-only" htmlFor="subscriber-email">
+              Email address
+            </label>
             <input
+              id="subscriber-email"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -70,7 +74,11 @@ export function SubscribeSection({ themeMode }: { themeMode: ThemeMode }) {
               {isSubmitting ? "Joining..." : "Subscribe"}
             </button>
           </div>
-          {status && <p className="mt-3 text-sm font-bold">{status}</p>}
+          {status && (
+            <p className="mt-3 text-sm font-bold" role="status" aria-live="polite">
+              {status}
+            </p>
+          )}
         </form>
       </div>
     </section>

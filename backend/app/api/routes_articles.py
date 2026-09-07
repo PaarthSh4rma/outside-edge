@@ -19,11 +19,11 @@ def fetch_news(db: Session = Depends(get_db)):
     article_repository = ArticleRepository(db)
 
     articles = article_service.fetch_latest_articles()
-    saved_articles = article_repository.create_many_if_not_exists(articles)
+    save_result = article_repository.save_many_if_not_exists(articles)
 
     return {
         "fetched_count": len(articles),
-        "saved_count": len(saved_articles),
+        "saved_count": save_result.created_count,
         "articles": [
             {
                 "id": article.id,
@@ -34,6 +34,6 @@ def fetch_news(db: Session = Depends(get_db)):
                 "summary": article.summary,
                 "category": article.category,
             }
-            for article in saved_articles
+            for article in save_result.articles
         ],
     }

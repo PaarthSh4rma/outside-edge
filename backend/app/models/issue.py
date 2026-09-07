@@ -1,9 +1,21 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class IssueModel(Base):
@@ -14,7 +26,10 @@ class IssueModel(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     tagline: Mapped[str] = mapped_column(String(300), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+    )
 
     articles: Mapped[list["IssueArticleModel"]] = relationship(
         back_populates="issue",

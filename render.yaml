@@ -1,8 +1,3 @@
-databases:
-  - name: outside-edge-db
-    databaseName: outside_edge
-    user: outside_edge
-
 services:
   - type: web
     name: outside-edge-api
@@ -16,19 +11,19 @@ services:
       - key: PYTHON_VERSION
         value: 3.13.0
       - key: DATABASE_URL
-        fromDatabase:
-          name: outside-edge-db
-          property: connectionString
+        sync: false
+      - key: DATABASE_SSLMODE
+        value: require
       - key: ADMIN_API_KEY
         sync: false
       - key: CORS_ORIGINS
-        value: https://outside-edge-web.onrender.com
+        value: https://your-cloudflare-pages-project.pages.dev
       - key: SCORE_STALE_AFTER_MINUTES
         value: "5"
       - key: EMAIL_FROM
         value: Outside Edge <newsletter@example.com>
       - key: PUBLIC_SITE_URL
-        value: https://outside-edge-web.onrender.com
+        value: https://your-cloudflare-pages-project.pages.dev
       - key: EMAIL_DRY_RUN
         value: "true"
       - key: RESEND_API_KEY
@@ -47,32 +42,3 @@ services:
     envVars:
       - key: VITE_API_BASE_URL
         value: https://outside-edge-api.onrender.com
-
-  - type: cron
-    name: outside-edge-daily-yorker
-    runtime: python
-    rootDir: backend
-    schedule: "0 20 * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m app.jobs.publish_daily_yorker --dry-run
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.13.0
-      - key: DATABASE_URL
-        fromDatabase:
-          name: outside-edge-db
-          property: connectionString
-      - key: ADMIN_API_KEY
-        sync: false
-      - key: CORS_ORIGINS
-        value: https://outside-edge-web.onrender.com
-      - key: SCORE_STALE_AFTER_MINUTES
-        value: "5"
-      - key: EMAIL_FROM
-        value: Outside Edge <newsletter@example.com>
-      - key: PUBLIC_SITE_URL
-        value: https://outside-edge-web.onrender.com
-      - key: EMAIL_DRY_RUN
-        value: "true"
-      - key: RESEND_API_KEY
-        sync: false

@@ -12,14 +12,26 @@ export function ArchivePage({ themeMode }: { themeMode: ThemeMode }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    let isCancelled = false;
+
     apiGet<Issue[]>("/issues")
-      .then(setIssues)
-      .catch(() =>
-        setErrorMessage(
-          "Outside Edge could not reach the archive service. Please try again shortly.",
-        ),
-      )
-      .finally(() => setIsLoading(false));
+      .then((loadedIssues) => {
+        if (!isCancelled) setIssues(loadedIssues);
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setErrorMessage(
+            "Outside Edge could not reach the archive service. Please try again shortly.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) setIsLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   return (
