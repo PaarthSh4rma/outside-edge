@@ -1,7 +1,7 @@
 # Outside Edge
 
-Outside Edge is a full-stack cricket intelligence portfolio project. It turns
-RSS cricket news into a persisted article library, generates a Daily Yorker
+Outside Edge is a full-stack cricket intelligence application. It turns RSS
+cricket news into a persisted article library, generates a Daily Yorker
 briefing, exposes issue and match-centre APIs, supports subscriber management,
 and renders a polished React frontend.
 
@@ -326,14 +326,3 @@ Render/Koyeb-style backend settings:
 
 `render.yaml` remains as optional Render configuration, but the preferred
 database is Supabase and the preferred scheduled publisher is GitHub Actions.
-
-## Resume Summary
-
-Outside Edge can be described as a complete full-stack portfolio application
-with RSS ingestion, normalized persistence, generated editorial briefings,
-subscriber workflows, safe newsletter delivery infrastructure, provider-neutral
-score modeling, React UI, PostgreSQL/Alembic, CLI jobs, CI, and deployment-ready
-configuration.
-
-Do not describe it as using live score data, AI-generated insight, RAG, or a
-fully deployed production service unless those are added and verified later.
